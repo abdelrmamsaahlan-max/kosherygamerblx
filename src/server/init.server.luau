@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 
-local OrderService = require(script.Parent.OrderService)
+local REWARD = 25
+local playerStates: {[Player]: "None" | "Ordered" | "Prepared"} = {}
 
 local function setupLeaderstats(player: Player)
 	local leaderstats = player:FindFirstChild("leaderstats")
@@ -17,6 +18,44 @@ local function setupLeaderstats(player: Player)
 		cash.Value = 0
 		cash.Parent = leaderstats
 	end
+end
+
+local function getState(player: Player)
+	return playerStates[player] or "None"
+end
+
+local function startOrder(player: Player)
+	if getState(player) ~= "None" then
+		return false, "You already have a Koshary order in progress."
+	end
+
+	playerStates[player] = "Ordered"
+	return true, "Koshary order received! Prepare it at the Prep Station."
+end
+
+local function prepareOrder(player: Player)
+	if getState(player) ~= "Ordered" then
+		return false, "You need to take a Koshary order first."
+	end
+
+	playerStates[player] = "Prepared"
+	return true, "Koshary is ready! Deliver it to the customer."
+end
+
+local function deliverOrder(player: Player)
+	if getState(player) ~= "Prepared" then
+		return false, "You need to prepare the Koshary first."
+	end
+
+	local leaderstats = player:FindFirstChild("leaderstats")
+	local cash = leaderstats and leaderstats:FindFirstChild("Cash")
+	if not cash or not cash:IsA("IntValue") then
+		return false, "Cash system is not ready yet."
+	end
+
+	cash.Value += REWARD
+	playerStates[player] = "None"
+	return true, string.format("Order delivered! +$%d Cash.", REWARD)
 end
 
 local function createStation(parent: Folder, name: string, position: Vector3, color: Color3, actionText: string)
@@ -37,7 +76,7 @@ local function createStation(parent: Folder, name: string, position: Vector3, co
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = part
 
-	return part, prompt
+	return prompt
 end
 
 local function setupRestaurant()
@@ -50,7 +89,7 @@ local function setupRestaurant()
 	restaurant.Name = "Restaurant"
 	restaurant.Parent = workspace
 
-	local orderCounter, orderPrompt = createStation(
+	local orderPrompt = createStation(
 		restaurant,
 		"Order Counter",
 		Vector3.new(0, 1.5, 0),
@@ -58,7 +97,7 @@ local function setupRestaurant()
 		"Take Order"
 	)
 
-	local prepStation, prepPrompt = createStation(
+	local prepPrompt = createStation(
 		restaurant,
 		"Koshary Prep Station",
 		Vector3.new(12, 1.5, 0),
@@ -66,7 +105,7 @@ local function setupRestaurant()
 		"Prepare Koshary"
 	)
 
-	local deliveryCounter, deliveryPrompt = createStation(
+	local deliveryPrompt = createStation(
 		restaurant,
 		"Delivery Counter",
 		Vector3.new(24, 1.5, 0),
@@ -75,20 +114,17 @@ local function setupRestaurant()
 	)
 
 	orderPrompt.Triggered:Connect(function(player)
-		local success, message = OrderService.StartOrder(player)
+		local success, message = startOrder(player)
 		print(string.format("[%s] %s", player.Name, message))
-		if success then
-			orderPrompt.ObjectText = "Koshary Order"
-		end
 	end)
 
 	prepPrompt.Triggered:Connect(function(player)
-		local success, message = OrderService.PrepareOrder(player)
+		local success, message = prepareOrder(player)
 		print(string.format("[%s] %s", player.Name, message))
 	end)
 
 	deliveryPrompt.Triggered:Connect(function(player)
-		local success, message = OrderService.DeliverOrder(player)
+		local success, message = deliverOrder(player)
 		print(string.format("[%s] %s", player.Name, message))
 	end)
 
@@ -96,10 +132,15 @@ local function setupRestaurant()
 end
 
 local function onPlayerAdded(player: Player)
+	playerStates[player] = "None"
 	setupLeaderstats(player)
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
+
+Players.PlayerRemoving:Connect(function(player)
+	playerStates[player] = nil
+end)
 
 for _, player in Players:GetPlayers() do
 	task.spawn(onPlayerAdded, player)
@@ -107,4 +148,4 @@ end
 
 setupRestaurant()
 
-print("EgyptianFood server initialized - Cash leaderboard ready")
+print("EgyptianFood server initialized - Cash + Koshary gameplay ready")
