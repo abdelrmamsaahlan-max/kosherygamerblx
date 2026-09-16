@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 
 local gui = Instance.new("ScreenGui")
@@ -8,7 +9,6 @@ gui.Parent = player:WaitForChild("PlayerGui")
 
 local orderFrame = Instance.new("Frame")
 orderFrame.Name = "OrderCard"
-orderFrame.AnchorPoint = Vector2.new(0, 0)
 orderFrame.Position = UDim2.fromOffset(24, 24)
 orderFrame.Size = UDim2.fromOffset(300, 112)
 orderFrame.BackgroundColor3 = Color3.fromRGB(20, 24, 32)
@@ -91,53 +91,10 @@ end
 cash:GetPropertyChangedSignal("Value"):Connect(updateCash)
 updateCash()
 
-local function updateOrderFromPrompt(prompt: ProximityPrompt)
-	local action = prompt.ActionText
-	if action == "Take Order" then
-		orderText.Text = "Koshary"
-		statusText.Text = "Take an order to get started"
-	elseif action == "Prepare Koshary" then
-		orderText.Text = "Koshary"
-		statusText.Text = "Prepare your order"
-	elseif action == "Deliver Order" then
-		orderText.Text = "Koshary"
-		statusText.Text = "Deliver it to the customer"
-	end
-end
+local remotes = ReplicatedStorage:WaitForChild("RestaurantRemotes")
+local orderStatusEvent = remotes:WaitForChild("OrderStatus")
 
-local function connectPrompt(prompt: ProximityPrompt)
-	prompt.Triggered:Connect(function()
-		if prompt.ActionText == "Take Order" then
-			orderText.Text = "Koshary"
-			statusText.Text = "Order received — prepare it"
-		elseif prompt.ActionText == "Prepare Koshary" then
-			orderText.Text = "Koshary"
-			statusText.Text = "Ready — deliver the order"
-		elseif prompt.ActionText == "Deliver Order" then
-			orderText.Text = "No active order"
-			statusText.Text = "Order complete — take another"
-		end
-	end)
-end
-
-local function findPrompts()
-	local restaurant = workspace:FindFirstChild("Restaurant")
-	if not restaurant then
-		return
-	end
-
-	for _, descendant in restaurant:GetDescendants() do
-		if descendant:IsA("ProximityPrompt") then
-			connectPrompt(descendant)
-		end
-	end
-end
-
-workspace.ChildAdded:Connect(function(child)
-	if child.Name == "Restaurant" then
-		task.wait()
-		findPrompts()
-	end
+orderStatusEvent.OnClientEvent:Connect(function(orderName: string, status: string)
+	orderText.Text = orderName
+	statusText.Text = status
 end)
-
-findPrompts()
