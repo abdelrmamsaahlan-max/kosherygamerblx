@@ -67,6 +67,8 @@ local function setupLeaderstats(player: Player)
 	if level.Value < 1 then level.Value = 1 end
 	local xp = leaderstats:FindFirstChild("XP") or Instance.new("IntValue")
 	xp.Name = "XP"; xp.Parent = leaderstats
+	local tips = leaderstats:FindFirstChild("Tips") or Instance.new("IntValue")
+	tips.Name = "Tips"; tips.Parent = leaderstats
 end
 
 local function addXP(player: Player, amount: number)
@@ -200,20 +202,39 @@ local function cookOrder(player: Player)
 	playerStates[player]="Prepared"; sendStatus(player,active.orderName,"✅ "..active.orderName.." ready — deliver it!"); updateCustomerDisplay(active.customer,"🥘 "..active.orderName.."\nReady! Bring my food!"); return true,active.orderName.." is ready!"
 end
 
+local function getCustomerSatisfaction(remaining: number): (number, number, string)
+	if remaining >= 45 then return 5, 8, "😍 Amazing service!"
+	elseif remaining >= 30 then return 4, 5, "😊 Great service!"
+	elseif remaining >= 15 then return 3, 2, "🙂 Good service!"
+	elseif remaining > 0 then return 2, 0, "😐 That took a while..."
+	else return 1, 0, "😕 Customer left unhappy."
+	end
+end
+
 local function deliverOrder(player: Player)
 	if getState(player)~="Prepared" then sendStatus(player,"Current Order","Finish all cooking steps first"); return false,"Finish the cooking steps first." end
 	local data,active=getOrderData(player); if not data or not active then return false,"Order data is missing." end
-	if active.expiresAt<=os.clock() then expireOrder(player); return false,"The customer left because the order expired." end
+	local remaining=math.max(0,math.ceil(active.expiresAt-os.clock()))
+	if remaining<=0 then expireOrder(player); return false,"The customer left because the order expired." end
 	local cash=player.leaderstats and player.leaderstats:FindFirstChild("Cash"); if not cash then return false,"Cash system is not ready." end
+	local satisfaction,tip,message=getCustomerSatisfaction(remaining)
 	cash.Value+=data.reward
+	local tips=player.leaderstats:FindFirstChild("Tips")
+	if tips then tips.Value+=tip end
+	if tip>0 then cash.Value+=tip end
 	addXP(player, XP_PER_ORDER)
 	removeFrontCustomer(); activeOrders[player]=nil; cookingSteps[player]=nil; playerStates[player]="None"; refillQueue(workspace.Restaurant.Customers); shiftQueue()
-	if getLevelForXP((player.leaderstats.XP :: IntValue).Value) >= 2 then
-		sendStatus(player,"Order Complete",string.format("+%d XP • +$%d • Restaurant Level %d",XP_PER_ORDER,data.reward,player.leaderstats.Level.Value))
+	if tip>0 then
+		sendStatus(player,"Customer Satisfaction",string.format("%s • ⭐ %d/5 • +$%d tip",message,satisfaction,tip))
 	else
-		sendStatus(player,"Order Complete",string.format("+%d XP • +$%d • %d XP to Level 2",XP_PER_ORDER,data.reward,LEVEL_XP[2] - player.leaderstats.XP.Value))
+		sendStatus(player,"Customer Satisfaction",string.format("%s • ⭐ %d/5 • No tip",message,satisfaction))
 	end
-	return true,string.format("%s delivered! +$%d Cash and +%d XP.",active.orderName,data.reward,XP_PER_ORDER)
+	if getLevelForXP((player.leaderstats.XP :: IntValue).Value) >= 2 then
+		sendStatus(player,"Order Complete",string.format("+%d XP • +$%d reward%s • Restaurant Level %d",XP_PER_ORDER,data.reward,tip>0 and string.format(" + $%d tip",tip) or "",player.leaderstats.Level.Value))
+	else
+		sendStatus(player,"Order Complete",string.format("+%d XP • +$%d reward%s • %d XP to Level 2",XP_PER_ORDER,data.reward,tip>0 and string.format(" + $%d tip",tip) or "",LEVEL_XP[2] - player.leaderstats.XP.Value))
+	end
+	return true,string.format("%s delivered! +$%d reward%s and +%d XP.",active.orderName,data.reward,tip>0 and string.format(" + $%d tip",tip) or "",XP_PER_ORDER)
 end
 
 local function restock(player: Player)
@@ -251,4 +272,4 @@ end
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(function(player) playerStates[player]=nil; destroyActiveCustomer(player) end)
 for _,player in Players:GetPlayers() do task.spawn(onPlayerAdded,player) end
-math.randomseed(os.time()); setupRestaurant(); print("EgyptianFood server initialized - Inventory + Progression ready")
+math.randomseed(os.time()); setupRestaurant(); print("EgyptianFood server initialized - Inventory + Progression + Satisfaction ready")
