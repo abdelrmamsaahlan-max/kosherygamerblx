@@ -93,15 +93,91 @@ cashLabel.TextColor3 = Color3.fromRGB(95, 220, 130)
 cashLabel.TextSize = 22
 cashLabel.Parent = cashFrame
 
+local progressFrame = Instance.new("Frame")
+progressFrame.Name = "ProgressDisplay"
+progressFrame.AnchorPoint = Vector2.new(1, 0)
+progressFrame.Position = UDim2.new(1, -24, 0, 88)
+progressFrame.Size = UDim2.fromOffset(250, 82)
+progressFrame.BackgroundColor3 = Color3.fromRGB(20, 24, 32)
+progressFrame.BackgroundTransparency = 0.08
+progressFrame.BorderSizePixel = 0
+progressFrame.Parent = gui
+
+local progressCorner = Instance.new("UICorner")
+progressCorner.CornerRadius = UDim.new(0, 14)
+progressCorner.Parent = progressFrame
+
+local levelLabel = Instance.new("TextLabel")
+levelLabel.BackgroundTransparency = 1
+levelLabel.Position = UDim2.fromOffset(14, 8)
+levelLabel.Size = UDim2.new(1, -28, 0, 22)
+levelLabel.Font = Enum.Font.GothamBold
+levelLabel.TextColor3 = Color3.fromRGB(255, 205, 80)
+levelLabel.TextSize = 16
+levelLabel.TextXAlignment = Enum.TextXAlignment.Left
+levelLabel.Parent = progressFrame
+
+local xpLabel = Instance.new("TextLabel")
+xpLabel.BackgroundTransparency = 1
+xpLabel.Position = UDim2.fromOffset(14, 31)
+xpLabel.Size = UDim2.new(1, -28, 0, 18)
+xpLabel.Font = Enum.Font.Gotham
+xpLabel.TextColor3 = Color3.fromRGB(185, 195, 210)
+xpLabel.TextSize = 12
+xpLabel.TextXAlignment = Enum.TextXAlignment.Left
+xpLabel.Parent = progressFrame
+
+local xpBar = Instance.new("Frame")
+xpBar.Position = UDim2.fromOffset(14, 56)
+xpBar.Size = UDim2.new(1, -28, 0, 10)
+xpBar.BackgroundColor3 = Color3.fromRGB(50, 56, 70)
+xpBar.BorderSizePixel = 0
+xpBar.Parent = progressFrame
+
+local xpBarCorner = Instance.new("UICorner")
+xpBarCorner.CornerRadius = UDim.new(1, 0)
+xpBarCorner.Parent = xpBar
+
+local xpFill = Instance.new("Frame")
+xpFill.Size = UDim2.fromScale(0, 1)
+xpFill.BackgroundColor3 = Color3.fromRGB(95, 175, 255)
+xpFill.BorderSizePixel = 0
+xpFill.Parent = xpBar
+
+local xpFillCorner = Instance.new("UICorner")
+xpFillCorner.CornerRadius = UDim.new(1, 0)
+xpFillCorner.Parent = xpFill
+
 local leaderstats = player:WaitForChild("leaderstats")
 local cash = leaderstats:WaitForChild("Cash")
+local level = leaderstats:WaitForChild("Level")
+local xp = leaderstats:WaitForChild("XP")
 
 local function updateCash()
 	cashLabel.Text = string.format("$%d", cash.Value)
 end
 
+local function updateProgress()
+	levelLabel.Text = string.format("RESTAURANT LEVEL %d", level.Value)
+	local currentXP = xp.Value
+	local thresholds = {0, 100, 250, 450, 700, 1000, 1400, 1850, 2400, 3000}
+	local currentThreshold = thresholds[level.Value] or 0
+	local nextThreshold = thresholds[level.Value + 1]
+	if nextThreshold then
+		xpLabel.Text = string.format("%d / %d XP", currentXP, nextThreshold)
+		local range = nextThreshold - currentThreshold
+		xpFill.Size = UDim2.fromScale(math.clamp((currentXP - currentThreshold) / range, 0, 1), 1)
+	else
+		xpLabel.Text = string.format("%d XP • MAX TIER", currentXP)
+		xpFill.Size = UDim2.fromScale(1, 1)
+	end
+end
+
 cash:GetPropertyChangedSignal("Value"):Connect(updateCash)
+level:GetPropertyChangedSignal("Value"):Connect(updateProgress)
+xp:GetPropertyChangedSignal("Value"):Connect(updateProgress)
 updateCash()
+updateProgress()
 
 local remotes = ReplicatedStorage:WaitForChild("RestaurantRemotes")
 local orderStatusEvent = remotes:WaitForChild("OrderStatus")
