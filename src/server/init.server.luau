@@ -2,7 +2,9 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local REWARD = 25
+local ORDER_TIME = 45
 local playerStates: {[Player]: "None" | "Ordered" | "Prepared"} = {}
+local activeOrders: {[Player]: {customer: Model, expiresAt: number}} = {}
 
 local remotes = ReplicatedStorage:FindFirstChild("RestaurantRemotes")
 if not remotes then
@@ -43,14 +45,100 @@ local function getState(player: Player)
 	return playerStates[player] or "None"
 end
 
+local function createCustomer(parent: Folder, position: Vector3): Model
+	local model = Instance.new("Model")
+	model.Name = "Customer"
+	model.Parent = parent
+
+	local body = Instance.new("Part")
+	body.Name = "Body"
+	body.Size = Vector3.new(2.2, 3, 1.4)
+	body.Position = position + Vector3.new(0, 2.2, 0)
+	body.Anchored = true
+	body.CanCollide = false
+	body.Material = Enum.Material.SmoothPlastic
+	body.Color = Color3.fromRGB(80, 105, 145)
+	body.Parent = model
+
+	local head = Instance.new("Part")
+	head.Name = "Head"
+	head.Shape = Enum.PartType.Ball
+	head.Size = Vector3.new(1.8, 1.8, 1.8)
+	head.Position = position + Vector3.new(0, 4.5, 0)
+	head.Anchored = true
+	head.CanCollide = false
+	head.Material = Enum.Material.SmoothPlastic
+	head.Color = Color3.fromRGB(230, 190, 145)
+	head.Parent = model
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "OrderBubble"
+	billboard.Size = UDim2.fromOffset(170, 55)
+	billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Parent = head
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(20, 24, 32)
+	label.BackgroundTransparency = 0.08
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 15
+	label.Text = "🥘 Koshary\nWaiting for my order"
+	label.Parent = billboard
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = label
+
+	return model
+end
+
+local function destroyCustomer(player: Player)
+	local order = activeOrders[player]
+	if order and order.customer then
+		order.customer:Destroy()
+	end
+	activeOrders[player] = nil
+end
+
 local function startOrder(player: Player)
 	if getState(player) ~= "None" then
 		sendStatus(player, "Koshary", "You already have an order in progress")
 		return false, "You already have a Koshary order in progress."
 	end
 
+	local restaurant = workspace:FindFirstChild("Restaurant")
+	local customers = restaurant and restaurant:FindFirstChild("Customers")
+	if not customers then
+		return false, "Customer system is not ready yet."
+	end
+
+	local customer = createCustomer(customers, Vector3.new(-2, 0, -8))
 	playerStates[player] = "Ordered"
-	sendStatus(player, "Koshary", "Order received — prepare it")
+	activeOrders[player] = {customer = customer, expiresAt = os.clock() + ORDER_TIME}
+	sendStatus(player, "Koshary", string.format("Order received — %ds to prepare", ORDER_TIME))
+
+	task.spawn(function()
+		while player.Parent and getState(player) == "Ordered" do
+			local order = activeOrders[player]
+			if not order then
+				break
+			end
+
+			local remaining = math.max(0, math.ceil(order.expiresAt - os.clock()))
+			sendStatus(player, "Koshary", string.format("Prepare the order — %ds left", remaining))
+			if remaining <= 0 then
+				playerStates[player] = "None"
+				destroyCustomer(player)
+				sendStatus(player, "No active order", "Customer left — order expired")
+				break
+			end
+			task.wait(1)
+		end
+	end)
+
 	return true, "Koshary order received! Prepare it at the Prep Station."
 end
 
@@ -58,6 +146,14 @@ local function prepareOrder(player: Player)
 	if getState(player) ~= "Ordered" then
 		sendStatus(player, "No active order", "Take an order first")
 		return false, "You need to take a Koshary order first."
+	end
+
+	local order = activeOrders[player]
+	if not order or order.expiresAt <= os.clock() then
+		playerStates[player] = "None"
+		destroyCustomer(player)
+		sendStatus(player, "No active order", "Customer left — order expired")
+		return false, "The order expired."
 	end
 
 	playerStates[player] = "Prepared"
@@ -74,12 +170,12 @@ local function deliverOrder(player: Player)
 	local leaderstats = player:FindFirstChild("leaderstats")
 	local cash = leaderstats and leaderstats:FindFirstChild("Cash")
 	if not cash or not cash:IsA("IntValue") then
-		sendStatus(player, "Koshary", "Cash system is not ready")
 		return false, "Cash system is not ready yet."
 	end
 
 	cash.Value += REWARD
 	playerStates[player] = "None"
+	destroyCustomer(player)
 	sendStatus(player, "No active order", string.format("Order complete — +$%d. Take another!", REWARD))
 	return true, string.format("Order delivered! +$%d Cash.", REWARD)
 end
@@ -114,6 +210,10 @@ local function setupRestaurant()
 	local restaurant = Instance.new("Folder")
 	restaurant.Name = "Restaurant"
 	restaurant.Parent = workspace
+
+	local customers = Instance.new("Folder")
+	customers.Name = "Customers"
+	customers.Parent = restaurant
 
 	local orderPrompt = createStation(restaurant, "Order Counter", Vector3.new(0, 1.5, 0), Color3.fromRGB(255, 205, 80), "Take Order")
 	local prepPrompt = createStation(restaurant, "Koshary Prep Station", Vector3.new(12, 1.5, 0), Color3.fromRGB(95, 175, 255), "Prepare Koshary")
@@ -150,6 +250,7 @@ end
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(function(player)
 	playerStates[player] = nil
+	destroyCustomer(player)
 end)
 
 for _, player in Players:GetPlayers() do
@@ -157,5 +258,4 @@ for _, player in Players:GetPlayers() do
 end
 
 setupRestaurant()
-
-print("EgyptianFood server initialized - Cash + Koshary gameplay ready")
+print("EgyptianFood server initialized - Customers + Koshary orders ready")
